@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/go-resty/resty/v2"
 	"github.com/pkg/errors"
@@ -285,4 +286,29 @@ func (pool *ClientPool) GetToBlock(fromRange int, maxToBlock int) int {
 		return fromRange
 	}
 	return maxToBlock
+}
+
+func (pool *ClientPool) GetAsMessage(txHash common.Hash) types.Message {
+	for {
+		client := pool.GetClient()
+		tx, _, err := client.TransactionByHash(context.Background(), txHash)
+		if err != nil {
+			logrus.Infof("error requesting transaction by hash from node, backing off. Endpoint: %v, Err: %v,", client.endpoint, err)
+			client.MarkError(err)
+			continue
+		}
+		chainID, err := client.NetworkID(context.Background())
+		if err != nil {
+			logrus.Infof("error requesting NetworkID from node, backing off. Endpoint: %v, Err: %v,", client.endpoint, err)
+			client.MarkError(err)
+			continue
+		}
+		msg, err := tx.AsMessage(types.LatestSignerForChainID(chainID), nil)
+		if err != nil {
+			logrus.Infof("error requesting AsMessage by chainId from node, backing off. ChainId: %v, Endpoint: %v, Err: %v,", chainID, client.endpoint, err)
+			client.MarkError(err)
+			continue
+		}
+		return msg
+	}
 }
